@@ -15,13 +15,16 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import axios from "axios";
+import localForage from "localforage";
+import Api from "../components/Api";
 
 const Profile = () => {
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [userData, setUserData] = useState({
-    firstName: "",
-    lastName: "",
+    firstname: "",
+    lastname: "",
     email: "",
     dateOfBirth: "",
     gender: "",
@@ -34,34 +37,110 @@ const Profile = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loadUserData = () => {
+    const fetchUserData = async () => {
       try {
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-          const parsedUser = JSON.parse(storedUser);
-          setUserData(parsedUser);
-          setFormData(parsedUser);
+        // Get token from localForage
+        const token = await localForage.getItem("token");
+
+        if (!token) {
+          toast.error("Please login to continue");
+          navigate("/login");
+          return;
+        }
+
+        // Fetch user data from API
+        const response = await axios.post(`${Api}/getUser`, { token });
+
+        if (response.data.success && response.data.user) {
+          const user = response.data.user;
+          setUserData(user);
+          setFormData(user);
+
+          // Update stored user data
+          await localForage.setItem("user", JSON.stringify(user));
+        } else {
+          throw new Error("Failed to fetch user data");
         }
       } catch (error) {
-        console.error("Error loading user data:", error);
+        console.error("Error fetching user data:", error);
+
+        // Try to get cached user data from localForage
+        const cachedUser = await localForage.getItem("user");
+        if (cachedUser) {
+          const user = JSON.parse(cachedUser);
+          setUserData(user);
+          setFormData(user);
+          toast.success("Loaded cached profile data");
+        } else if (error.response?.status === 401) {
+          toast.error("Session expired. Please login again.");
+          await localForage.removeItem("token");
+          await localForage.removeItem("user");
+          navigate("/login");
+        } else {
+          toast.error(
+            error.response?.data?.error || "Failed to load user data",
+          );
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadUserData();
-  }, []);
+    fetchUserData();
+  }, [navigate]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSave = () => {
-    localStorage.setItem("user", JSON.stringify(formData));
-    setUserData(formData);
-    setIsEditing(false);
-    toast.success("Profile updated successfully");
+  const handleSave = async () => {
+    setIsLoading(true);
+    const loadingToast = toast.loading("Updating profile...");
+
+    try {
+      // Get token
+      const token = await localForage.getItem("token");
+
+      if (!token) {
+        toast.error("Please login to continue");
+        navigate("/login");
+        return;
+      }
+
+      // Update user data via API
+      const response = await axios.put(`${Api}/user/update`, {
+        token,
+        userData: formData,
+      });
+
+      if (response.data.success) {
+        // Update local state
+        setUserData(formData);
+
+        // Update stored user data
+        await localForage.setItem("user", JSON.stringify(formData));
+
+        toast.success("Profile updated successfully", { id: loadingToast });
+        setIsEditing(false);
+      } else {
+        throw new Error(response.data.message || "Update failed");
+      }
+    } catch (error) {
+      toast.dismiss(loadingToast);
+
+      if (error.response?.status === 401) {
+        toast.error("Session expired. Please login again.");
+        await localForage.removeItem("token");
+        await localForage.removeItem("user");
+        navigate("/login");
+      } else {
+        toast.error(error.response?.data?.error || "Failed to update profile");
+      }
+      console.error("Update error:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleCancel = () => {
@@ -69,9 +148,9 @@ const Profile = () => {
     setIsEditing(false);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+  const handleLogout = async () => {
+    await localForage.removeItem("token");
+    await localForage.removeItem("user");
     navigate("/login");
     toast.success("Logged out successfully");
   };
@@ -85,7 +164,7 @@ const Profile = () => {
   }
 
   const fullName =
-    `${userData.firstName || ""} ${userData.lastName || ""}`.trim();
+    `${userData.firstname || ""} ${userData.lastname || ""}`.trim();
 
   return (
     <div className="bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
@@ -109,16 +188,6 @@ const Profile = () => {
                   <p className="text-sm text-gray-500">{userData.email}</p>
                 </div>
               </div>
-
-              {!isEditing && (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
-                >
-                  <Edit2 className="w-4 h-4" />
-                  Edit
-                </button>
-              )}
             </div>
 
             {/* Form Fields */}
@@ -132,14 +201,14 @@ const Profile = () => {
                   {isEditing ? (
                     <input
                       type="text"
-                      name="firstName"
-                      value={formData.firstName}
+                      name="firstname"
+                      value={formData.firstname || ""}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                     />
                   ) : (
                     <p className="text-gray-900 py-2">
-                      {userData.firstName || "—"}
+                      {userData.firstname || "—"}
                     </p>
                   )}
                 </div>
@@ -150,14 +219,14 @@ const Profile = () => {
                   {isEditing ? (
                     <input
                       type="text"
-                      name="lastName"
-                      value={formData.lastName}
+                      name="lastname"
+                      value={formData.lastname || ""}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                     />
                   ) : (
                     <p className="text-gray-900 py-2">
-                      {userData.lastName || "—"}
+                      {userData.lastname || "—"}
                     </p>
                   )}
                 </div>
@@ -172,7 +241,7 @@ const Profile = () => {
                   <input
                     type="email"
                     name="email"
-                    value={formData.email}
+                    value={formData.email || ""}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                   />
@@ -194,14 +263,20 @@ const Profile = () => {
                     <input
                       type="date"
                       name="dateOfBirth"
-                      value={formData.dateOfBirth}
+                      value={
+                        formData.dateOfBirth
+                          ? formData.dateOfBirth.split("T")[0]
+                          : ""
+                      }
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                     />
                   ) : (
                     <p className="text-gray-900 py-2 flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-gray-400" />
-                      {userData.dateOfBirth || "—"}
+                      {userData.dateOfBirth
+                        ? new Date(userData.dateOfBirth).toLocaleDateString()
+                        : "—"}
                     </p>
                   )}
                 </div>
@@ -212,7 +287,7 @@ const Profile = () => {
                   {isEditing ? (
                     <select
                       name="gender"
-                      value={formData.gender}
+                      value={formData.gender || ""}
                       onChange={handleInputChange}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                     >
@@ -237,7 +312,7 @@ const Profile = () => {
                 {isEditing ? (
                   <select
                     name="bloodGroup"
-                    value={formData.bloodGroup}
+                    value={formData.bloodGroup || ""}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                   >
@@ -267,7 +342,7 @@ const Profile = () => {
                 {isEditing ? (
                   <select
                     name="medicalCondition"
-                    value={formData.medicalCondition}
+                    value={formData.medicalCondition || ""}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                   >
@@ -295,41 +370,24 @@ const Profile = () => {
                 )}
               </div>
 
-              {/* Condition Details */}
-              {(userData.medicalCondition || isEditing) && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">
-                    Condition Details
-                  </label>
-                  {isEditing ? (
-                    <input
-                      type="text"
-                      name="conditionSpecific"
-                      value={formData.conditionSpecific}
-                      onChange={handleInputChange}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                      placeholder="e.g., Type 2 Diabetes, SS type, etc."
-                    />
-                  ) : (
-                    <p className="text-gray-900 py-2">
-                      {userData.conditionSpecific || "—"}
-                    </p>
-                  )}
-                </div>
-              )}
-
               {/* Action Buttons */}
               {isEditing && (
                 <div className="flex gap-3 pt-4 border-t border-gray-100">
                   <button
                     onClick={handleSave}
-                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2 text-sm"
+                    disabled={isLoading}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2 text-sm disabled:opacity-50"
                   >
-                    <Save className="w-4 h-4" />
+                    {isLoading ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
                     Save Changes
                   </button>
                   <button
                     onClick={handleCancel}
+                    disabled={isLoading}
                     className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition flex items-center gap-2 text-sm"
                   >
                     <X className="w-4 h-4" />

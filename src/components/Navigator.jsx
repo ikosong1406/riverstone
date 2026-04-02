@@ -13,6 +13,10 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import axios from "axios";
+import localForage from "localforage";
+import Api from "./Api";
+import toast from "react-hot-toast";
 
 const Navigator = () => {
   const navigate = useNavigate();
@@ -20,6 +24,8 @@ const Navigator = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [userData, setUserData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Check screen size for responsive behavior
   useEffect(() => {
@@ -33,42 +39,105 @@ const Navigator = () => {
     return () => window.removeEventListener("resize", checkScreenSize);
   }, []);
 
-  const navigationItems = [
-    {
-      path: "/home",
-      icon: Home,
-      label: "Home",
-      chinese: "首页",
-    },
-    {
-      path: "/consultation",
-      icon: Stethoscope,
-      label: "Consultation",
-      chinese: "问诊",
-    },
-    {
-      path: "/pharmacy",
-      icon: Pill,
-      label: "Pharmacy",
-      chinese: "药房",
-    },
-    {
+  // Fetch user data to check hasBooked status
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const token = await localForage.getItem("token");
+
+        if (!token) {
+          setIsLoading(false);
+          return;
+        }
+
+        const response = await axios.post(`${Api}/getUser`, { token });
+
+        if (response.data.success && response.data.user) {
+          setUserData(response.data.user);
+          await localForage.setItem("user", JSON.stringify(response.data.user));
+        }
+      } catch (error) {
+        console.error("Error fetching user data for navigation:", error);
+        // Try to get cached user data
+        const cachedUser = await localForage.getItem("user");
+        if (cachedUser) {
+          setUserData(JSON.parse(cachedUser));
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserData();
+  }, []);
+
+  // Define navigation items with condition
+  const getNavigationItems = () => {
+    const items = [
+      {
+        path: "/home",
+        icon: Home,
+        label: "Home",
+        chinese: "首页",
+        requiredCondition: null, // Always show
+      },
+      {
+        path: "/consultation",
+        icon: Stethoscope,
+        label: "Consultation",
+        chinese: "问诊",
+        requiredCondition: null, // Always show
+      },
+    ];
+
+    // Only show pharmacy if user has booked a consultation
+    if (userData?.hasBooked === true) {
+      items.push({
+        path: "/pharmacy",
+        icon: Pill,
+        label: "Pharmacy",
+        chinese: "药房",
+        requiredCondition: "hasBooked",
+      });
+    }
+
+    items.push({
       path: "/profile",
       icon: User,
       label: "Profile",
       chinese: "个人中心",
-    },
-  ];
+      requiredCondition: null, // Always show
+    });
 
-  const handleLogout = () => {
-    // Simple logout - just redirect to login
+    return items;
+  };
+
+  const navigationItems = getNavigationItems();
+
+  const handleLogout = async () => {
+    await localForage.removeItem("token");
+    await localForage.removeItem("user");
     navigate("/login");
+    toast.success("Logged out successfully");
   };
 
   // Close mobile menu when route changes
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [location.pathname]);
+
+  // If loading, show minimal navigation
+  if (isLoading) {
+    return (
+      <aside className="fixed left-0 top-0 h-full w-20 bg-white border-r border-gray-200 shadow-lg z-50">
+        <div className="flex items-center justify-center p-5">
+          <div className="w-8 h-8 bg-gradient-to-br from-green-600 to-emerald-600 rounded-lg flex items-center justify-center">
+            <Heart className="w-4 h-4 text-white" />
+          </div>
+        </div>
+      </aside>
+    );
+  }
 
   // Mobile Bottom Navigation
   if (isMobile) {

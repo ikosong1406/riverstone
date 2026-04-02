@@ -8,13 +8,14 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  Heart,
   Shield,
   Fingerprint,
   AlertCircle,
 } from "lucide-react";
-import toast from "react-hot-toast";
+import {toast, Toaster} from "react-hot-toast";
 import axios from "axios";
+import localForage from "localforage";
+import Api from "../components/Api";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -57,42 +58,70 @@ const Login = () => {
     if (!validateForm()) return;
 
     setLoading(true);
-    navigate("/home");
-    //   try {
-    //     const response = await axios.post(
-    //       "http://localhost:5000/api/auth/login",
-    //       {
-    //         email: formData.email,
-    //         password: formData.password,
-    //         rememberMe: formData.rememberMe,
-    //       },
-    //     );
+    const loadingToast = toast.loading("Signing in...");
 
-    //     localStorage.setItem("token", response.data.token);
-    //     localStorage.setItem("user", JSON.stringify(response.data.user));
+    try {
+      const response = await axios.post(`${Api}/login`, {
+        email: formData.email,
+        password: formData.password,
+      });
 
-    //     toast.success("Welcome back to Riverstone!");
-    //     navigate("/home");
-    //   } catch (error) {
-    //     toast.error(
-    //       error.response?.data?.message || "Login failed. Please try again.",
-    //     );
-    //   } finally {
-    //     setLoading(false);
-    //   }
+      // Show API response message
+      if (response.data.message) {
+        toast.success(response.data.message, { id: loadingToast });
+      } else {
+        toast.success("Welcome back to Riverstone!", { id: loadingToast });
+      }
+
+      // Store token in localForage
+      if (response.data.token) {
+        await localForage.setItem("token", response.data.token);
+        await localForage.setItem(
+          "user",
+          JSON.stringify({
+            email: formData.email,
+            rememberMe: formData.rememberMe,
+          }),
+        );
+
+        toast.success("Login successful! Redirecting...");
+
+        setTimeout(() => {
+          navigate("/home");
+        }, 1500);
+      } else {
+        throw new Error("No token received");
+      }
+    } catch (error) {
+      toast.dismiss(loadingToast);
+
+      // Show all error responses from API
+      if (error.response?.data?.message) {
+        toast.error(error.response.data.message);
+      } else if (error.response?.data?.errors) {
+        error.response.data.errors.forEach((err) => toast.error(err));
+      } else if (error.request) {
+        toast.error("Network error - please check your connection");
+      } else {
+        toast.error(error.message || "Login failed");
+      }
+
+      console.error("Login error:", error.response?.data || error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50/30 via-white to-emerald-50/30 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <Toaster position="top-right" reverseOrder={false} />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         className="max-w-md w-full space-y-8 bg-white rounded-2xl shadow-xl p-8 md:p-10"
       >
-        {/* Logo and Header */}
         <div className="text-center">
-          <div className="flex justify-center mb-4"></div>
           <h2 className="text-3xl font-bold text-gray-900">Welcome Back</h2>
           <p className="mt-2 text-sm text-gray-600">
             Sign in to your Riverstone account
@@ -100,9 +129,7 @@ const Login = () => {
           <p className="text-xs text-gray-500 mt-1">瑞华医学研究中心</p>
         </div>
 
-        {/* Login Form */}
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {/* Email Field */}
           <div>
             <label
               htmlFor="email"
@@ -136,7 +163,6 @@ const Login = () => {
             )}
           </div>
 
-          {/* Password Field */}
           <div>
             <label
               htmlFor="password"
@@ -181,7 +207,6 @@ const Login = () => {
             )}
           </div>
 
-          {/* Remember Me & Forgot Password */}
           <div className="flex items-center justify-between">
             <label className="flex items-center">
               <input
@@ -201,7 +226,6 @@ const Login = () => {
             </Link>
           </div>
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
@@ -217,7 +241,6 @@ const Login = () => {
             )}
           </button>
 
-          {/* Sign Up Link */}
           <p className="text-center text-sm text-gray-600">
             Don't have an account?{" "}
             <Link
@@ -229,7 +252,6 @@ const Login = () => {
           </p>
         </form>
 
-        {/* Security Notice */}
         <div className="mt-6 pt-6 border-t border-gray-200">
           <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
             <Shield className="w-4 h-4" />

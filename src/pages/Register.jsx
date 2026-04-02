@@ -7,7 +7,6 @@ import {
   Lock,
   Eye,
   EyeOff,
-  User,
   Calendar,
   Heart,
   ArrowRight,
@@ -19,15 +18,17 @@ import {
   HeartPulse,
 } from "lucide-react";
 import axios from "axios";
-import toast from "react-hot-toast";
+import { toast, Toaster } from "react-hot-toast";
+import localForage from "localforage";
+import Api from "../components/Api";
 
 const Register = () => {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
+    firstname: "",
+    lastname: "",
     email: "",
     dateOfBirth: "",
     gender: "",
@@ -68,8 +69,8 @@ const Register = () => {
 
   const validateForm = () => {
     const newErrors = {};
-    if (!formData.firstName) newErrors.firstName = "First name is required";
-    if (!formData.lastName) newErrors.lastName = "Last name is required";
+    if (!formData.firstname) newErrors.firstname = "First name is required";
+    if (!formData.lastname) newErrors.lastname = "Last name is required";
     if (!formData.email) newErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(formData.email))
       newErrors.email = "Enter a valid email";
@@ -91,21 +92,44 @@ const Register = () => {
     if (!validateForm()) return;
 
     setLoading(true);
+    const loadingToast = toast.loading("Creating your account...");
+
     try {
-      const response = await axios.post(
-        "http://localhost:5000/api/auth/register",
-        formData,
-      );
+      const response = await axios.post(`${Api}/signup`, formData);
 
-      localStorage.setItem("token", response.data.token);
-      localStorage.setItem("user", JSON.stringify(response.data.user));
+      // Show API response message
+      if (response.data.message) {
+        toast.success(response.data.message, { id: loadingToast });
+      } else {
+        toast.success("Account created successfully!", { id: loadingToast });
+      }
 
-      toast.success("Account created successfully!");
-      navigate("/home");
+      // Clear any existing data
+      await localForage.removeItem("token");
+      await localForage.removeItem("user");
+
+      toast.success("Please login to continue");
+
+      setTimeout(() => {
+        navigate("/login");
+      }, 2000);
     } catch (error) {
-      toast.error(
-        error.response?.data?.message ||
-          "Registration failed. Please try again.",
+      toast.dismiss(loadingToast);
+
+      // Show all error responses from API
+      if (error.response?.data?.message) {
+        toast.error(error.response.data.message);
+      } else if (error.response?.data?.errors) {
+        error.response.data.errors.forEach((err) => toast.error(err));
+      } else if (error.request) {
+        toast.error("Network error - please check your connection");
+      } else {
+        toast.error(error.message || "Registration failed");
+      }
+
+      console.error(
+        "Registration error:",
+        error.response?.data || error.message,
       );
     } finally {
       setLoading(false);
@@ -134,8 +158,8 @@ const Register = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <Toaster position="top-right" reverseOrder={false} />
       <div className="max-w-2xl w-full">
-        {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -148,7 +172,6 @@ const Register = () => {
           <p className="text-xs text-gray-400 mt-1">瑞华医学研究中心</p>
         </motion.div>
 
-        {/* Form Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -156,7 +179,6 @@ const Register = () => {
           className="bg-white rounded-2xl shadow-xl overflow-hidden"
         >
           <form onSubmit={handleSubmit} className="p-8">
-            {/* Two Column Layout */}
             <div className="grid grid-cols-2 gap-5 mb-5">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -164,38 +186,32 @@ const Register = () => {
                 </label>
                 <input
                   type="text"
-                  name="firstName"
-                  value={formData.firstName}
+                  name="firstname"
+                  value={formData.firstname}
                   onChange={handleChange}
-                  className={`w-full px-4 py-2.5 border ${
-                    errors.firstName ? "border-red-400" : "border-gray-200"
-                  } rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition`}
+                  className={`w-full px-4 py-2.5 border ${errors.firstname ? "border-red-400" : "border-gray-200"} rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500`}
                   placeholder="John"
                 />
-                {errors.firstName && (
-                  <p className="mt-1 text-xs text-red-500 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    {errors.firstName}
+                {errors.firstname && (
+                  <p className="mt-1 text-xs text-red-500">
+                    {errors.firstname}
                   </p>
                 )}
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Last Name
                 </label>
                 <input
                   type="text"
-                  name="lastName"
-                  value={formData.lastName}
+                  name="lastname"
+                  value={formData.lastname}
                   onChange={handleChange}
-                  className={`w-full px-4 py-2.5 border ${
-                    errors.lastName ? "border-red-400" : "border-gray-200"
-                  } rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition`}
+                  className={`w-full px-4 py-2.5 border ${errors.lastname ? "border-red-400" : "border-gray-200"} rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500`}
                   placeholder="Doe"
                 />
-                {errors.lastName && (
-                  <p className="mt-1 text-xs text-red-500">{errors.lastName}</p>
+                {errors.lastname && (
+                  <p className="mt-1 text-xs text-red-500">{errors.lastname}</p>
                 )}
               </div>
             </div>
@@ -211,9 +227,7 @@ const Register = () => {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  className={`w-full pl-9 pr-4 py-2.5 border ${
-                    errors.email ? "border-red-400" : "border-gray-200"
-                  } rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition`}
+                  className={`w-full pl-9 pr-4 py-2.5 border ${errors.email ? "border-red-400" : "border-gray-200"} rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500`}
                   placeholder="you@example.com"
                 />
               </div>
@@ -234,9 +248,7 @@ const Register = () => {
                     name="dateOfBirth"
                     value={formData.dateOfBirth}
                     onChange={handleChange}
-                    className={`w-full pl-9 pr-4 py-2.5 border ${
-                      errors.dateOfBirth ? "border-red-400" : "border-gray-200"
-                    } rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition`}
+                    className={`w-full pl-9 pr-4 py-2.5 border ${errors.dateOfBirth ? "border-red-400" : "border-gray-200"} rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500`}
                   />
                 </div>
                 {errors.dateOfBirth && (
@@ -245,7 +257,6 @@ const Register = () => {
                   </p>
                 )}
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Gender
@@ -254,9 +265,7 @@ const Register = () => {
                   name="gender"
                   value={formData.gender}
                   onChange={handleChange}
-                  className={`w-full px-4 py-2.5 border ${
-                    errors.gender ? "border-red-400" : "border-gray-200"
-                  } rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white transition`}
+                  className={`w-full px-4 py-2.5 border ${errors.gender ? "border-red-400" : "border-gray-200"} rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white`}
                 >
                   <option value="">Select</option>
                   {genders.map((g) => (
@@ -279,7 +288,7 @@ const Register = () => {
                 name="bloodGroup"
                 value={formData.bloodGroup}
                 onChange={handleChange}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white transition"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
               >
                 <option value="">Select Blood Group</option>
                 {bloodGroups.map((bg) => (
@@ -301,9 +310,7 @@ const Register = () => {
                   name="password"
                   value={formData.password}
                   onChange={handleChange}
-                  className={`w-full pl-9 pr-10 py-2.5 border ${
-                    errors.password ? "border-red-400" : "border-gray-200"
-                  } rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition`}
+                  className={`w-full pl-9 pr-10 py-2.5 border ${errors.password ? "border-red-400" : "border-gray-200"} rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500`}
                   placeholder="Create a password"
                 />
                 <button
@@ -339,33 +346,20 @@ const Register = () => {
                         medicalCondition: condition.value,
                         conditionSpecific: "",
                       }));
-                      if (errors.medicalCondition) {
+                      if (errors.medicalCondition)
                         setErrors((prev) => ({
                           ...prev,
                           medicalCondition: "",
                         }));
-                      }
                     }}
-                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
-                      formData.medicalCondition === condition.value
-                        ? "border-green-500 bg-green-50 shadow-sm"
-                        : "border-gray-200 hover:border-green-300 hover:bg-gray-50"
-                    }`}
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${formData.medicalCondition === condition.value ? "border-green-500 bg-green-50" : "border-gray-200 hover:border-green-300"}`}
                   >
                     <condition.icon
-                      className={`w-5 h-5 ${
-                        formData.medicalCondition === condition.value
-                          ? "text-green-600"
-                          : "text-gray-400"
-                      }`}
+                      className={`w-5 h-5 ${formData.medicalCondition === condition.value ? "text-green-600" : "text-gray-400"}`}
                     />
                     <div className="text-left">
                       <p
-                        className={`text-sm font-medium ${
-                          formData.medicalCondition === condition.value
-                            ? "text-green-700"
-                            : "text-gray-700"
-                        }`}
+                        className={`text-sm font-medium ${formData.medicalCondition === condition.value ? "text-green-700" : "text-gray-700"}`}
                       >
                         {condition.label}
                       </p>
@@ -403,7 +397,7 @@ const Register = () => {
                   name="conditionSpecific"
                   value={formData.conditionSpecific}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                   placeholder={getConditionPlaceholder()}
                 />
                 <p className="mt-1 text-xs text-gray-400">
@@ -415,14 +409,13 @@ const Register = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition disabled:opacity-50"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
-                  Create Account
-                  <ArrowRight className="w-4 h-4" />
+                  Create Account <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
@@ -439,7 +432,6 @@ const Register = () => {
           </form>
         </motion.div>
 
-        {/* Trust Badge */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -448,16 +440,16 @@ const Register = () => {
         >
           <div className="inline-flex items-center gap-4 text-xs text-gray-400">
             <span className="flex items-center gap-1">
-              <div className="w-1 h-1 bg-green-500 rounded-full"></div>
-              NHC Certified
+              <div className="w-1 h-1 bg-green-500 rounded-full"></div>NHC
+              Certified
             </span>
             <span className="flex items-center gap-1">
-              <div className="w-1 h-1 bg-green-500 rounded-full"></div>
-              Secure & Encrypted
+              <div className="w-1 h-1 bg-green-500 rounded-full"></div>Secure &
+              Encrypted
             </span>
             <span className="flex items-center gap-1">
-              <div className="w-1 h-1 bg-green-500 rounded-full"></div>
-              HIPAA Compliant
+              <div className="w-1 h-1 bg-green-500 rounded-full"></div>HIPAA
+              Compliant
             </span>
           </div>
         </motion.div>

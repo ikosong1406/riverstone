@@ -1,7 +1,7 @@
 // src/pages/Home.jsx
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Heart,
   Stethoscope,
@@ -25,15 +25,21 @@ import {
   CheckCircle,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import axios from "axios";
+import localForage from "localforage";
+import Api from "../components/Api";
 
 const Home = () => {
+  const navigate = useNavigate();
   const [userData, setUserData] = useState({
-    firstName: "",
-    lastName: "",
+    firstname: "",
+    lastname: "",
     email: "",
     medicalCondition: "",
     conditionSpecific: "",
     bloodGroup: "",
+    gender: "",
+    dateOfBirth: "",
     upcomingAppointments: 0,
     healthScore: 85,
   });
@@ -41,28 +47,72 @@ const Home = () => {
   const [greeting, setGreeting] = useState("");
 
   useEffect(() => {
-    const loadUserData = () => {
+    const fetchUserData = async () => {
       try {
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-          const user = JSON.parse(storedUser);
-          setUserData((prev) => ({ ...prev, ...user }));
+        // Get token from localForage
+        const token = await localForage.getItem("token");
+
+        if (!token) {
+          toast.error("Please login to continue");
+          navigate("/login");
+          return;
+        }
+
+        // Fetch user data from API
+        const response = await axios.post(`${Api}/getUser`, { token });
+
+        if (response.data.success && response.data.user) {
+          const user = response.data.user;
+          setUserData((prev) => ({
+            ...prev,
+            ...user,
+            firstname: user.firstname || "",
+            lastname: user.lastname || "",
+            email: user.email || "",
+            medicalCondition: user.medicalCondition || "",
+            conditionSpecific: user.conditionSpecific || "",
+            bloodGroup: user.bloodGroup || "",
+            gender: user.gender || "",
+            dateOfBirth: user.dateOfBirth || "",
+          }));
+
+          // Store user data in localForage for offline access
+          await localForage.setItem("user", JSON.stringify(user));
+        } else {
+          throw new Error("Failed to fetch user data");
         }
       } catch (error) {
-        console.error("Error loading user data:", error);
+        console.error("Error fetching user data:", error);
+
+        // Try to get cached user data from localForage
+        const cachedUser = await localForage.getItem("user");
+        if (cachedUser) {
+          const user = JSON.parse(cachedUser);
+          setUserData((prev) => ({ ...prev, ...user }));
+          toast.success("Loaded cached profile data");
+        } else if (error.response?.status === 401) {
+          toast.error("Session expired. Please login again.");
+          await localForage.removeItem("token");
+          await localForage.removeItem("user");
+          navigate("/login");
+        } else {
+          toast.error(
+            error.response?.data?.error || "Failed to load user data",
+          );
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadUserData();
+    fetchUserData();
 
     // Set greeting based on time of day
     const hour = new Date().getHours();
     if (hour < 12) setGreeting("Good Morning");
     else if (hour < 18) setGreeting("Good Afternoon");
     else setGreeting("Good Evening");
-  }, []);
+  }, [navigate]);
 
   const getConditionIcon = () => {
     switch (userData.medicalCondition) {
@@ -110,7 +160,7 @@ const Home = () => {
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">
-            {greeting}, {userData.firstName || "Patient"}!
+            {greeting}, {userData.firstname || "Patient"}!
           </h1>
           <p className="text-gray-500 mt-1">
             Welcome to Riverstone Medical Research Center
@@ -133,26 +183,6 @@ const Home = () => {
               className="inline-flex items-center gap-2 text-sm font-medium text-white hover:text-green-100 transition"
             >
               Consult Now
-              <ChevronRight className="w-4 h-4" />
-            </Link>
-          </motion.div>
-
-          <motion.div
-            whileHover={{ y: -4 }}
-            className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
-          >
-            <Pill className="w-8 h-8 text-green-600 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">
-              Pharmacy
-            </h3>
-            <p className="text-gray-500 text-sm mb-4">
-              Order medicines with free delivery
-            </p>
-            <Link
-              to="/pharmacy"
-              className="inline-flex items-center gap-2 text-sm font-medium text-green-600 hover:text-green-700 transition"
-            >
-              Shop Now
               <ChevronRight className="w-4 h-4" />
             </Link>
           </motion.div>
@@ -250,14 +280,13 @@ const Home = () => {
             <div className="space-y-3">
               <div className="flex justify-between items-center py-2 border-b border-gray-100">
                 <span className="text-sm text-gray-500">Condition</span>
-                <span className="text-sm font-medium text-gray-900">
+                <span className="text-sm font-medium text-gray-900 capitalize">
                   {userData.medicalCondition
                     ? userData.medicalCondition === "sickleCell"
                       ? "Sickle Cell Disease"
                       : userData.medicalCondition === "cardiovascular"
                         ? "Cardiovascular Disease"
-                        : userData.medicalCondition.charAt(0).toUpperCase() +
-                          userData.medicalCondition.slice(1)
+                        : userData.medicalCondition
                     : "Not specified"}
                 </span>
               </div>
@@ -278,13 +307,19 @@ const Home = () => {
                 </span>
               </div>
 
+              {userData.dateOfBirth && (
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-500">Date of Birth</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {new Date(userData.dateOfBirth).toLocaleDateString()}
+                  </span>
+                </div>
+              )}
+
               <div className="flex justify-between items-center py-2">
-                <span className="text-sm text-gray-500">Member Since</span>
-                <span className="text-sm font-medium text-gray-900">
-                  {new Date().toLocaleDateString("en-US", {
-                    month: "long",
-                    year: "numeric",
-                  })}
+                <span className="text-sm text-gray-500">Email</span>
+                <span className="text-sm font-medium text-gray-900 truncate ml-4">
+                  {userData.email || "Not specified"}
                 </span>
               </div>
             </div>
