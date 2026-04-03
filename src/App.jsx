@@ -11,6 +11,7 @@ import Home from "./pages/Home";
 import Consultation from "./pages/Consultation";
 import Pharmacy from "./pages/Pharmacy";
 import Profile from "./pages/Profile";
+import Booking from "./pages/Booking";
 
 // Components
 import Navigator from "./components/Navigator";
@@ -69,6 +70,19 @@ export default function App() {
             </div>
           }
         />
+
+        <Route
+          path="/booking"
+          element={
+            <div className="flex min-h-screen bg-gray-50">
+              <Navigator />
+              <main className="flex-1 overflow-auto">
+                <Booking />
+              </main>
+            </div>
+          }
+        />
+
 
         {/* 404 Page */}
         <Route

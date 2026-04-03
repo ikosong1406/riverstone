@@ -1,701 +1,480 @@
 // src/pages/Consultation.jsx
-import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import {
   Stethoscope,
-  MessageCircle,
-  X,
-  Send,
   User,
   Calendar,
-  Clock,
-  Star,
-  Video,
-  Phone,
-  MessageSquare,
-  Pill,
   Heart,
   Droplet,
   Activity,
   ChevronRight,
-  Bot,
-  CheckCircle,
+  Clock,
+  MapPin,
+  Award,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import axios from "axios";
+import localForage from "localforage";
+import Api from "../components/Api";
 
 const Consultation = () => {
-  const [selectedDoctor, setSelectedDoctor] = useState(null);
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
-  const [inputMessage, setInputMessage] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const messagesEndRef = useRef(null);
-  const [userCondition, setUserCondition] = useState(null);
-  const [userDetails, setUserDetails] = useState({});
+  const navigate = useNavigate();
+  const [userData, setUserData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [doctors, setDoctors] = useState([]);
+  const [filteredDoctors, setFilteredDoctors] = useState([]);
 
   // Load user data on mount
   useEffect(() => {
-    const loadUserData = () => {
+    const fetchUserData = async () => {
       try {
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-          const user = JSON.parse(storedUser);
-          setUserDetails(user);
+        const token = await localForage.getItem("token");
 
-          // Determine condition type
-          let condition = user.medicalCondition || "general";
-          if (condition === "sickleCell") condition = "sickleCell";
-          if (condition === "cardiovascular") condition = "cardiovascular";
-          setUserCondition(condition);
+        if (!token) {
+          toast.error("Please login to continue");
+          navigate("/login");
+          return;
+        }
+
+        const response = await axios.post(`${Api}/getUser`, { token });
+
+        if (response.data.success && response.data.user) {
+          const user = response.data.user;
+          setUserData(user);
+
+          // Filter doctors based on user's medical condition
+          filterDoctorsByCondition(user.medicalCondition);
+        } else {
+          throw new Error("Failed to fetch user data");
         }
       } catch (error) {
-        console.error("Error loading user data:", error);
+        console.error("Error fetching user data:", error);
+
+        // Try to get cached user data
+        const cachedUser = await localForage.getItem("user");
+        if (cachedUser) {
+          const user = JSON.parse(cachedUser);
+          setUserData(user);
+          filterDoctorsByCondition(user.medicalCondition);
+          toast.success("Loaded cached profile data");
+        } else if (error.response?.status === 401) {
+          toast.error("Session expired. Please login again.");
+          navigate("/login");
+        } else {
+          toast.error("Failed to load user data");
+        }
+      } finally {
+        setIsLoading(false);
       }
     };
-    loadUserData();
-  }, []);
 
-  // Doctors data based on condition
-  const doctors = [
+    fetchUserData();
+  }, [navigate]);
+
+  // All Chinese Doctors (Chinese nationality) with USD prices $350-$400
+  // REMOVED the 'icon' property since it can't be serialized
+  const allDoctors = [
     {
       id: 1,
-      name: "Dr. Sarah Johnson",
+      name: "Dr. Zhang Wei",
       specialty: "Endocrinologist",
       condition: "diabetes",
       conditionName: "Diabetes",
-      icon: Droplet,
-      experience: "12 years",
-      rating: 4.9,
-      patients: 2840,
-      availability: "Today",
-      nextSlot: "2:30 PM",
-      image: "/doctors/diabetes-doctor.jpg",
-      languages: ["English", "Mandarin"],
-      education: "Harvard Medical School",
+      experience: "15 years",
+      patients: 3240,
+      image:
+        "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "Peking Union Medical College",
       about:
-        "Specialist in diabetes management and insulin therapy with over 12 years of experience.",
+        "Specialist in diabetes management and insulin therapy with over 15 years of experience.",
+      location: "Beijing, China",
+      consultationFee: 380,
+      hospital: "Peking Union Medical College Hospital",
     },
     {
       id: 2,
-      name: "Dr. Michael Chen",
+      name: "Dr. Chen Mei",
       specialty: "Hematologist",
       condition: "sickleCell",
       conditionName: "Sickle Cell Disease",
-      icon: Heart,
-      experience: "15 years",
-      rating: 4.8,
-      patients: 1250,
-      availability: "Today",
-      nextSlot: "3:00 PM",
-      image: "/doctors/sicklecell-doctor.jpg",
-      languages: ["English", "Mandarin", "Cantonese"],
-      education: "Peking University Medical School",
+      experience: "18 years",
+      patients: 2150,
+      image:
+        "https://images.unsplash.com/photo-1594824476967-48c8b964273f?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "Shanghai Jiao Tong University School of Medicine",
       about:
         "Leading expert in gene therapy and sickle cell treatment with published research.",
+      location: "Shanghai, China",
+      consultationFee: 390,
+      hospital: "Ruijin Hospital",
     },
     {
       id: 3,
-      name: "Dr. Emily Rodriguez",
+      name: "Dr. Li Qiang",
       specialty: "Oncologist",
       condition: "cancer",
       conditionName: "Cancer",
-      icon: Activity,
-      experience: "18 years",
-      rating: 4.9,
-      patients: 3420,
-      availability: "Today",
-      nextSlot: "4:15 PM",
-      image: "/doctors/cancer-doctor.jpg",
-      languages: ["English", "Spanish"],
-      education: "Johns Hopkins University",
+      experience: "22 years",
+      patients: 5420,
+      image:
+        "https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "Fudan University Shanghai Cancer Center",
       about: "Specialized in immunotherapy and targeted cancer treatments.",
+      location: "Shanghai, China",
+      consultationFee: 400,
+      hospital: "Fudan University Shanghai Cancer Center",
     },
     {
       id: 4,
-      name: "Dr. James Wilson",
+      name: "Dr. Wang Fang",
       specialty: "Cardiologist",
       condition: "cardiovascular",
       conditionName: "Cardiovascular Disease",
-      icon: Activity,
       experience: "20 years",
-      rating: 5.0,
-      patients: 5210,
-      availability: "Today",
-      nextSlot: "1:45 PM",
-      image: "/doctors/cardio-doctor.jpg",
-      languages: ["English"],
-      education: "Stanford University",
+      patients: 6210,
+      image:
+        "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "Peking University Health Science Center",
       about:
         "Expert in non-invasive cardiology and revolutionary plaque reversal treatments.",
+      location: "Beijing, China",
+      consultationFee: 370,
+      hospital: "Beijing Anzhen Hospital",
     },
     {
       id: 5,
-      name: "Dr. Lisa Wang",
+      name: "Dr. Liu Xia",
       specialty: "General Practitioner",
       condition: "general",
       conditionName: "General Health",
-      icon: Stethoscope,
-      experience: "8 years",
-      rating: 4.7,
-      patients: 1850,
-      availability: "Today",
-      nextSlot: "5:00 PM",
-      image: "/doctors/general-doctor.jpg",
-      languages: ["English", "Mandarin"],
-      education: "Fudan University",
+      experience: "10 years",
+      patients: 2850,
+      image:
+        "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "Sun Yat-sen University",
       about: "Comprehensive primary care and preventive medicine specialist.",
+      location: "Guangzhou, China",
+      consultationFee: 350,
+      hospital: "Guangdong Provincial People's Hospital",
+    },
+    {
+      id: 6,
+      name: "Dr. Zhao Ming",
+      specialty: "Nephrologist",
+      condition: "diabetes",
+      conditionName: "Diabetes",
+      experience: "14 years",
+      patients: 3100,
+      image:
+        "https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "West China Medical Center",
+      about: "Specializes in diabetic kidney disease prevention and treatment.",
+      location: "Chengdu, China",
+      consultationFee: 360,
+      hospital: "West China Hospital",
+    },
+    {
+      id: 7,
+      name: "Dr. Sun Yating",
+      specialty: "Hematologist",
+      condition: "sickleCell",
+      conditionName: "Sickle Cell Disease",
+      experience: "12 years",
+      patients: 1680,
+      image:
+        "https://images.unsplash.com/photo-1594824476967-48c8b964273f?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "Zhejiang University School of Medicine",
+      about:
+        "Specialized in sickle cell management and bone marrow transplantation.",
+      location: "Hangzhou, China",
+      consultationFee: 385,
+      hospital: "Sir Run Run Shaw Hospital",
+    },
+    {
+      id: 8,
+      name: "Dr. Xu Jie",
+      specialty: "Cardiologist",
+      condition: "cardiovascular",
+      conditionName: "Cardiovascular Disease",
+      experience: "16 years",
+      patients: 4890,
+      image:
+        "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "Tongji Medical College",
+      about: "Leading cardiologist specializing in preventive cardiology.",
+      location: "Wuhan, China",
+      consultationFee: 375,
+      hospital: "Wuhan Union Hospital",
+    },
+    {
+      id: 9,
+      name: "Dr. Lin Wei",
+      specialty: "Oncologist",
+      condition: "cancer",
+      conditionName: "Cancer",
+      experience: "19 years",
+      patients: 4780,
+      image:
+        "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "Sun Yat-sen University Cancer Center",
+      about: "Expert in precision medicine and cancer immunotherapy.",
+      location: "Guangzhou, China",
+      consultationFee: 395,
+      hospital: "Sun Yat-sen University Cancer Center",
+    },
+    {
+      id: 10,
+      name: "Dr. Wu Tao",
+      specialty: "Endocrinologist",
+      condition: "diabetes",
+      conditionName: "Diabetes",
+      experience: "13 years",
+      patients: 2780,
+      image:
+        "https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "Nanjing Medical University",
+      about:
+        "Specializes in advanced diabetes treatment and insulin pump therapy.",
+      location: "Nanjing, China",
+      consultationFee: 365,
+      hospital: "Jiangsu Province Hospital",
+    },
+    {
+      id: 11,
+      name: "Dr. Huang Ying",
+      specialty: "General Practitioner",
+      condition: "general",
+      conditionName: "General Health",
+      experience: "9 years",
+      patients: 1950,
+      image:
+        "https://images.unsplash.com/photo-1594824476967-48c8b964273f?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "Sichuan University",
+      about: "Specializes in family medicine and chronic disease management.",
+      location: "Chongqing, China",
+      consultationFee: 355,
+      hospital: "Chongqing University Cancer Hospital",
+    },
+    {
+      id: 12,
+      name: "Dr. Tang Wei",
+      specialty: "Cardiologist",
+      condition: "cardiovascular",
+      conditionName: "Cardiovascular Disease",
+      experience: "21 years",
+      patients: 7120,
+      image:
+        "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=400&h=400&fit=crop",
+      languages: ["Mandarin", "English"],
+      education: "Capital Medical University",
+      about: "Expert in interventional cardiology and heart failure treatment.",
+      location: "Beijing, China",
+      consultationFee: 400,
+      hospital: "Beijing Chaoyang Hospital",
     },
   ];
 
-  // Filter doctors based on user condition
-  const filteredDoctors = doctors.filter(
-    (doctor) =>
-      doctor.condition === userCondition || doctor.condition === "general",
-  );
+  const filterDoctorsByCondition = (userCondition) => {
+    if (!userCondition) {
+      // Show general practitioners if no condition specified
+      const generalDoctors = allDoctors.filter(
+        (doc) => doc.condition === "general",
+      );
+      setDoctors(generalDoctors);
+      setFilteredDoctors(generalDoctors);
+      return;
+    }
 
-  // Medication recommendations based on condition
-  const getMedicationRecommendations = (condition) => {
-    const recommendations = {
-      diabetes: [
-        {
-          name: "Metformin",
-          dosage: "500mg twice daily",
-          description: "First-line medication for type 2 diabetes",
-          price: "₹45",
-          prescription: true,
-        },
-        {
-          name: "Insulin Glargine",
-          dosage: "10 units at bedtime",
-          description: "Long-acting insulin for blood sugar control",
-          price: "₹320",
-          prescription: true,
-        },
-        {
-          name: "Glucose Monitoring Strips",
-          dosage: "50 strips",
-          description: "Monitor blood glucose levels",
-          price: "₹280",
-          prescription: false,
-        },
-        {
-          name: "Vitamin B12",
-          dosage: "500mcg daily",
-          description: "Prevents deficiency common in diabetic patients",
-          price: "₹95",
-          prescription: false,
-        },
-      ],
-      sickleCell: [
-        {
-          name: "Hydroxyurea",
-          dosage: "15mg/kg daily",
-          description: "Reduces painful crises and complications",
-          price: "₹450",
-          prescription: true,
-        },
-        {
-          name: "Folic Acid",
-          dosage: "1mg daily",
-          description: "Essential for red blood cell production",
-          price: "₹25",
-          prescription: false,
-        },
-        {
-          name: "Pain Relief Tablets",
-          dosage: "As needed",
-          description: "For managing pain during crises",
-          price: "₹120",
-          prescription: true,
-        },
-        {
-          name: "Zinc Supplements",
-          dosage: "25mg daily",
-          description: "Boosts immune system function",
-          price: "₹85",
-          prescription: false,
-        },
-      ],
-      cancer: [
-        {
-          name: "Immunotherapy Drugs",
-          dosage: "As prescribed",
-          description: "Targeted cancer treatment",
-          price: "₹2500",
-          prescription: true,
-        },
-        {
-          name: "Anti-nausea Medication",
-          dosage: "As needed",
-          description: "Manages treatment side effects",
-          price: "₹180",
-          prescription: true,
-        },
-        {
-          name: "High Protein Supplements",
-          dosage: "Twice daily",
-          description: "Maintains strength during treatment",
-          price: "₹450",
-          prescription: false,
-        },
-        {
-          name: "Pain Management",
-          dosage: "As prescribed",
-          description: "Comfort care medication",
-          price: "₹210",
-          prescription: true,
-        },
-      ],
-      cardiovascular: [
-        {
-          name: "Atorvastatin",
-          dosage: "20mg daily",
-          description: "Lowers cholesterol and reduces plaque",
-          price: "₹95",
-          prescription: true,
-        },
-        {
-          name: "Aspirin",
-          dosage: "75mg daily",
-          description: "Prevents blood clots",
-          price: "₹15",
-          prescription: false,
-        },
-        {
-          name: "Blood Pressure Monitor",
-          dosage: "Home device",
-          description: "Track BP regularly",
-          price: "₹1250",
-          prescription: false,
-        },
-        {
-          name: "Omega-3 Supplements",
-          dosage: "1000mg daily",
-          description: "Heart health support",
-          price: "₹180",
-          prescription: false,
-        },
-      ],
-      general: [
-        {
-          name: "Multivitamins",
-          dosage: "Once daily",
-          description: "Overall health support",
-          price: "₹95",
-          prescription: false,
-        },
-        {
-          name: "Vitamin D3",
-          dosage: "2000 IU daily",
-          description: "Immune system support",
-          price: "₹65",
-          prescription: false,
-        },
-        {
-          name: "Probiotics",
-          dosage: "Once daily",
-          description: "Gut health maintenance",
-          price: "₹150",
-          prescription: false,
-        },
-      ],
+    // Filter doctors matching user's condition OR general practitioners
+    const matchedDoctors = allDoctors.filter(
+      (doctor) =>
+        doctor.condition === userCondition || doctor.condition === "general",
+    );
+    setDoctors(matchedDoctors);
+    setFilteredDoctors(matchedDoctors);
+  };
+
+  const handleBookConsultation = (doctor) => {
+    // Create a serializable copy of doctor without React components
+    const serializableDoctor = {
+      id: doctor.id,
+      name: doctor.name,
+      specialty: doctor.specialty,
+      condition: doctor.condition,
+      conditionName: doctor.conditionName,
+      experience: doctor.experience,
+      patients: doctor.patients,
+      image: doctor.image,
+      languages: doctor.languages,
+      education: doctor.education,
+      about: doctor.about,
+      location: doctor.location,
+      consultationFee: doctor.consultationFee,
+      hospital: doctor.hospital,
     };
 
-    return recommendations[condition] || recommendations.general;
+    // Store selected doctor data in localForage for the booking page
+    localForage.setItem("selectedDoctor", JSON.stringify(serializableDoctor));
+    localForage.setItem("consultationType", "new");
+
+    // Navigate to booking page
+    navigate("/booking", { state: { doctor: serializableDoctor } });
   };
 
-  // Auto-response messages
-  const getAutoResponse = (userMessage, condition) => {
-    const userMessageLower = userMessage.toLowerCase();
-    const medications = getMedicationRecommendations(condition);
-
-    if (
-      userMessageLower.includes("medication") ||
-      userMessageLower.includes("medicine") ||
-      userMessageLower.includes("drug")
-    ) {
-      return {
-        text: `Based on your condition, I recommend the following medications:\n\n${medications.map((m) => `• ${m.name} (${m.dosage}): ${m.description} - ${m.price}`).join("\n")}\n\n${medications.some((m) => m.prescription) ? "\n⚠️ Some medications require a prescription. Would you like me to prescribe these for you?" : "\nAll these are available in our pharmacy with free shipping!"}`,
-        type: "medication",
-      };
-    }
-
-    if (
-      userMessageLower.includes("prescription") ||
-      userMessageLower.includes("prescribe")
-    ) {
-      return {
-        text: `I've prepared your prescription for:\n\n${medications
-          .filter((m) => m.prescription)
-          .map((m) => `• ${m.name} - ${m.dosage}`)
-          .join(
-            "\n",
-          )}\n\nYou can now order these from our pharmacy with free delivery. Would you like me to add them to your cart?`,
-        type: "prescription",
-      };
-    }
-
-    if (
-      userMessageLower.includes("pharmacy") ||
-      userMessageLower.includes("order") ||
-      userMessageLower.includes("buy")
-    ) {
-      return {
-        text: `Great! You can order these medications from our inbuilt pharmacy:\n\n${medications.map((m) => `• ${m.name} (${m.price})`).join("\n")}\n\nAll orders come with FREE shipping to your location. Click "Order Now" to add to cart and proceed to checkout.`,
-        type: "pharmacy",
-      };
-    }
-
-    if (
-      userMessageLower.includes("side effect") ||
-      userMessageLower.includes("safe")
-    ) {
-      return {
-        text: `All recommended medications are FDA-approved and CFDA-certified. Common side effects are mild and temporary. For detailed information about each medication, you can check the product page in our pharmacy. Would you like me to explain any specific medication?`,
-        type: "info",
-      };
-    }
-
-    if (
-      userMessageLower.includes("dosage") ||
-      userMessageLower.includes("take")
-    ) {
-      return {
-        text: `Here are the recommended dosages:\n\n${medications.map((m) => `• ${m.name}: ${m.dosage}`).join("\n")}\n\nPlease follow the dosage instructions carefully. If you have any concerns, consult with your doctor before starting any new medication.`,
-        type: "info",
-      };
-    }
-
-    if (userMessageLower.includes("hello") || userMessageLower.includes("hi")) {
-      return {
-        text: `Hello! I'm ${selectedDoctor?.name.split(" ")[0]}, your ${selectedDoctor?.specialty}. I'm here to help you manage your ${condition === "diabetes" ? "diabetes" : condition === "sickleCell" ? "sickle cell condition" : condition === "cancer" ? "cancer treatment" : condition === "cardiovascular" ? "cardiovascular health" : "health"}. How can I assist you today?`,
-        type: "greeting",
-      };
-    }
-
-    return {
-      text: `I understand your concern. Based on your condition (${condition === "diabetes" ? "Diabetes" : condition === "sickleCell" ? "Sickle Cell Disease" : condition === "cancer" ? "Cancer" : condition === "cardiovascular" ? "Cardiovascular Disease" : "General Health"}), I recommend starting with the prescribed medication plan. Would you like me to show you the recommended medications? You can ask me about:\n\n• Available medications\n• Prescription details\n• How to order from pharmacy\n• Side effects\n• Dosage information`,
-      type: "info",
-    };
-  };
-
-  const handleDoctorClick = (doctor) => {
-    setSelectedDoctor(doctor);
-    setIsChatOpen(true);
-
-    // Initial welcome message from doctor
-    const welcomeMessage = {
-      id: Date.now(),
-      text: `Hello! I'm ${doctor.name}, your ${doctor.specialty}. Based on your profile, I can see you're managing ${doctor.conditionName}. How can I help you with your treatment today?`,
-      sender: "doctor",
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
-    setMessages([welcomeMessage]);
-  };
-
-  const handleSendMessage = () => {
-    if (!inputMessage.trim()) return;
-
-    // Add user message
-    const userMessage = {
-      id: Date.now(),
-      text: inputMessage,
-      sender: "user",
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    };
-    setMessages((prev) => [...prev, userMessage]);
-    setInputMessage("");
-
-    // Show typing indicator
-    setIsTyping(true);
-
-    // Auto-response after delay
-    setTimeout(() => {
-      const response = getAutoResponse(inputMessage, selectedDoctor?.condition);
-      const doctorResponse = {
-        id: Date.now() + 1,
-        text: response.text,
-        sender: "doctor",
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        type: response.type,
-      };
-      setMessages((prev) => [...prev, doctorResponse]);
-      setIsTyping(false);
-
-      // If response includes medication recommendations, show toast
-      if (response.type === "medication" || response.type === "prescription") {
-        toast.success(
-          "Medication recommendations ready! You can order from pharmacy.",
-        );
-      }
-    }, 1000);
-  };
-
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+  // Helper function to get icon component based on condition
+  const getConditionIcon = (condition) => {
+    switch (condition) {
+      case "diabetes":
+        return Droplet;
+      case "sickleCell":
+        return Heart;
+      case "cancer":
+        return Activity;
+      case "cardiovascular":
+        return Activity;
+      default:
+        return Stethoscope;
     }
   };
 
-  const handleOrderNow = () => {
-    toast.success("Redirecting to pharmacy with your cart...");
-    setTimeout(() => {
-      window.location.href = "/pharmacy";
-    }, 1500);
-  };
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-3 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        {/* Doctor Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredDoctors.map((doctor, index) => (
-            <motion.div
-              key={doctor.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-              onClick={() => handleDoctorClick(doctor)}
-              className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all cursor-pointer group"
-            >
-              <div className="p-6">
-                {/* Doctor Icon */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-emerald-100 rounded-2xl flex items-center justify-center">
-                    <doctor.icon className="w-8 h-8 text-green-600" />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                    <span className="text-sm font-semibold text-gray-900">
-                      {doctor.rating}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Doctor Info */}
-                <h3 className="text-lg font-bold text-gray-900 mb-1">
-                  {doctor.name}
-                </h3>
-                <p className="text-sm text-green-600 font-medium mb-2">
-                  {doctor.specialty}
-                </p>
-                <p className="text-xs text-gray-500 mb-3">
-                  {doctor.experience} experience • {doctor.patients}+ patients
-                </p>
-
-                {/* Availability */}
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-xs text-gray-600">
-                    Available {doctor.availability} at {doctor.nextSlot}
-                  </span>
-                </div>
-
-                {/* Languages */}
-                <div className="flex flex-wrap gap-1 mb-4">
-                  {doctor.languages.map((lang) => (
-                    <span
-                      key={lang}
-                      className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full"
-                    >
-                      {lang}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Consult Button */}
-                <button className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition group-hover:shadow-md">
-                  <MessageCircle className="w-4 h-4" />
-                  <span className="text-sm font-medium">
-                    Start Consultation
-                  </span>
-                </button>
-              </div>
-            </motion.div>
-          ))}
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">
+            Find a Specialist
+          </h1>
+          <p className="text-gray-500 mt-1">
+            {userData?.medicalCondition
+              ? `Personalized doctors for your ${userData.medicalCondition === "sickleCell" ? "Sickle Cell" : userData.medicalCondition} condition`
+              : "Complete your profile to see personalized doctor recommendations"}
+          </p>
         </div>
 
-        {/* Empty State */}
-        {filteredDoctors.length === 0 && (
-          <div className="text-center py-12">
+        {/* Doctor Cards Grid */}
+        {filteredDoctors.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredDoctors.map((doctor, index) => {
+              const IconComponent = getConditionIcon(doctor.condition);
+              return (
+                <motion.div
+                  key={doctor.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all group"
+                >
+                  {/* Doctor Image */}
+                  <div className="relative h-48 overflow-hidden">
+                    <img
+                      src={doctor.image}
+                      alt={doctor.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg">
+                      <span className="text-xs font-semibold text-gray-900">
+                        ${doctor.consultationFee}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-6">
+                    {/* Doctor Icon */}
+                    <div className="mb-3">
+                      <h3 className="text-lg font-bold text-gray-900 mb-1">
+                        {doctor.name}
+                      </h3>
+                      <p className="text-sm text-green-600 font-medium">
+                        {doctor.specialty}
+                      </p>
+                    </div>
+
+                    {/* Experience & Patients */}
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-gray-400" />
+                        <span className="text-xs text-gray-600">
+                          {doctor.experience}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <User className="w-3 h-3 text-gray-400" />
+                        <span className="text-xs text-gray-600">
+                          {doctor.patients}+ patients
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Languages */}
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {doctor.languages.map((lang) => (
+                        <span
+                          key={lang}
+                          className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full"
+                        >
+                          {lang}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Book Button */}
+                    <button
+                      onClick={() => handleBookConsultation(doctor)}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition group-hover:shadow-md"
+                    >
+                      <Calendar className="w-4 h-4" />
+                      <span className="text-sm font-medium">
+                        Book Consultation
+                      </span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        ) : (
+          /* Empty State */
+          <div className="text-center py-12 bg-white rounded-xl shadow-sm">
             <Stethoscope className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
               No doctors available
             </h3>
-            <p className="text-gray-500">
+            <p className="text-gray-500 mb-4">
               Please complete your profile with a medical condition to see
               relevant doctors.
             </p>
+            <button
+              onClick={() => navigate("/profile")}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+            >
+              Update Profile
+            </button>
           </div>
         )}
       </div>
-
-      {/* Chat Modal */}
-      <AnimatePresence>
-        {isChatOpen && selectedDoctor && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-            onClick={() => setIsChatOpen(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-2xl h-[600px] flex flex-col overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Chat Header */}
-              <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-green-600 to-emerald-600">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                    <selectedDoctor.icon className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-white font-semibold">
-                      {selectedDoctor.name}
-                    </h3>
-                    <p className="text-green-100 text-xs">
-                      {selectedDoctor.specialty} • {selectedDoctor.experience}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsChatOpen(false)}
-                  className="p-1 hover:bg-white/20 rounded-lg transition"
-                >
-                  <X className="w-5 h-5 text-white" />
-                </button>
-              </div>
-
-              {/* Chat Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[80%] ${message.sender === "user" ? "order-2" : "order-1"}`}
-                    >
-                      <div
-                        className={`flex items-start gap-2 ${message.sender === "user" ? "flex-row-reverse" : ""}`}
-                      >
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            message.sender === "user"
-                              ? "bg-green-600"
-                              : "bg-gray-300"
-                          }`}
-                        >
-                          {message.sender === "user" ? (
-                            <User className="w-4 h-4 text-white" />
-                          ) : (
-                            <Bot className="w-4 h-4 text-gray-600" />
-                          )}
-                        </div>
-                        <div>
-                          <div
-                            className={`rounded-lg p-3 ${
-                              message.sender === "user"
-                                ? "bg-green-600 text-white"
-                                : "bg-white border border-gray-200 text-gray-800"
-                            }`}
-                          >
-                            <p className="text-sm whitespace-pre-wrap">
-                              {message.text}
-                            </p>
-                          </div>
-                          <p className="text-xs text-gray-400 mt-1">
-                            {message.timestamp}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                {isTyping && (
-                  <div className="flex justify-start">
-                    <div className="bg-white border border-gray-200 rounded-lg p-3">
-                      <div className="flex gap-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.2s" }}
-                        ></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.4s" }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Order Button */}
-              <div className="p-3 border-t border-gray-200 bg-gray-50">
-                <button
-                  onClick={handleOrderNow}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"
-                >
-                  <Pill className="w-4 h-4" />
-                  Order Recommended Medications from Pharmacy
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Chat Input */}
-              <div className="p-4 border-t border-gray-200 bg-white">
-                <div className="flex gap-2">
-                  <textarea
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Ask about medications, prescription, or treatment..."
-                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 resize-none text-sm"
-                    rows="2"
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!inputMessage.trim()}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </div>
-                <p className="text-xs text-gray-400 mt-2">
-                  💡 Try asking: "What medications do I need?" or "Can I order
-                  from pharmacy?"
-                </p>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };

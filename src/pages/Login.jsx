@@ -12,7 +12,7 @@ import {
   Fingerprint,
   AlertCircle,
 } from "lucide-react";
-import {toast, Toaster} from "react-hot-toast";
+import { toast, Toaster } from "react-hot-toast";
 import axios from "axios";
 import localForage from "localforage";
 import Api from "../components/Api";
@@ -83,8 +83,6 @@ const Login = () => {
             rememberMe: formData.rememberMe,
           }),
         );
-
-        toast.success("Login successful! Redirecting...");
 
         setTimeout(() => {
           navigate("/home");
